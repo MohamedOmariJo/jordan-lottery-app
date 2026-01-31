@@ -34,7 +34,7 @@ class MockDataGenerator:
         return pd.DataFrame(data)
 
 # ==============================================================================
-# 2. المحلل الإحصائي (Analyzer)
+# 2. المحلل الإحصائي
 # ==============================================================================
 class LotteryAnalyzer:
     def __init__(self, history_df: pd.DataFrame):
@@ -60,7 +60,6 @@ class LotteryAnalyzer:
         self.cold_pool = set(sorted_nums[16:])
 
     def calculate_custom_average(self, mode: str, param1: int = 0, param2: int = 0) -> tuple:
-        """يعيد (المتوسط, قائمة المجاميع للرسم البياني)"""
         df = self.history_df.copy()
         if mode == "Last N Draws":
             if param1 > len(df): param1 = len(df)
@@ -85,7 +84,7 @@ class LotteryAnalyzer:
         return self.draw_map.get(draw_id)
 
 # ==============================================================================
-# 3. المدقق (Validator)
+# 3. المدقق
 # ==============================================================================
 class TicketValidator:
     @staticmethod
@@ -121,7 +120,7 @@ class TicketValidator:
         return analysis
 
 # ==============================================================================
-# 4. محرك التوليد (The Generator)
+# 4. محرك التوليد
 # ==============================================================================
 class TicketGenerator:
     def __init__(self, analyzer: LotteryAnalyzer):
@@ -258,7 +257,7 @@ class TicketGenerator:
         return {"status": status, "requested": count, "generated": len(generated_tickets), "tickets": generated_tickets, "errors": Counter(errors_list).most_common(3)}
 
 # ==============================================================================
-# 5. واجهة المستخدم (v5.2 - Charts & Precision)
+# 5. واجهة المستخدم (v5.5 Safe CSS)
 # ==============================================================================
 def load_data(uploaded_file=None):
     df = None
@@ -275,14 +274,12 @@ def load_data(uploaded_file=None):
 
     if df is not None:
         try:
-            # Smart Column Detection
             if not {'N1', 'N2', 'N3', 'N4', 'N5', 'N6'}.issubset(df.columns):
                 return None, "الملف يجب أن يحتوي على N1..N6"
             
             df['numbers'] = df[['N1','N2','N3','N4','N5','N6']].values.tolist()
             df['numbers'] = df['numbers'].apply(lambda x: sorted([int(n) for n in x]))
             
-            # Handle Arabic or English ID
             if 'رقم السحب' in df.columns:
                 df = df.rename(columns={'رقم السحب': 'draw_id'})
             elif 'DrawID' in df.columns: 
@@ -296,10 +293,34 @@ def load_data(uploaded_file=None):
     return None, "No data"
 
 def main():
-    st.set_page_config(page_title="نظام لوتري الأردن الذكي", page_icon="🎰", layout="wide", initial_sidebar_state="expanded")
-    st.markdown(\"\"\"<style>.main {direction: rtl;} h1,h2,h3,p,div,label,span {text-align: right; font-family: 'Segoe UI', sans-serif;} .stMetric {text-align: right !important;} .footer {position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f6; color: #333; text-align: center; padding: 10px; border-top: 1px solid #ddd; font-size: 14px; z-index: 999; font-family: 'Segoe UI', sans-serif; font-weight: bold;} @media (prefers-color-scheme: dark) { .footer {background-color: #0e1117; color: #888; border-top: 1px solid #333;} }</style>\"\"\", unsafe_allow_html=True)
+    st.set_page_config(
+        page_title="نظام لوتري الأردن الذكي", 
+        page_icon="🎰", 
+        layout="wide", 
+        initial_sidebar_state="expanded"
+    )
 
-    st.title("🎰 نظام لوتري الأردن الذكي (v5.2 Visuals)")
+    # وضعنا التصميم هنا في متغير منفصل لتجنب مشاكل الأقواس
+    custom_css = """
+    <style>
+    .main { direction: rtl; }
+    h1, h2, h3, p, div, label, span { text-align: right; font-family: 'Segoe UI', sans-serif; }
+    .stMetric { text-align: right !important; }
+    .footer {
+        position: fixed; left: 0; bottom: 0; width: 100%;
+        background-color: #f0f2f6; color: #333;
+        text-align: center; padding: 10px;
+        border-top: 1px solid #ddd; font-size: 14px;
+        z-index: 999; font-family: 'Segoe UI', sans-serif; font-weight: bold;
+    }
+    @media (prefers-color-scheme: dark) {
+        .footer { background-color: #0e1117; color: #888; border-top: 1px solid #333; }
+    }
+    </style>
+    """
+    st.markdown(custom_css, unsafe_allow_html=True)
+
+    st.title("🎰 نظام لوتري الأردن الذكي (v5.5 Final)")
     
     with st.sidebar:
         st.header("1. إعدادات البيانات")
@@ -341,7 +362,7 @@ def main():
                 st.markdown("**📊 ضبط المتوسط الحسابي**")
                 avg_chk = st.checkbox("الالتزام بالمتوسط", value=True)
                 target_avg_val = analyzer.global_avg_sum
-                chart_data = [] # للرسم البياني
+                chart_data = [] 
                 
                 if avg_chk:
                     avg_mode = st.selectbox("المرجع لحساب المتوسط:", ["كافة السحوبات (Default)", "آخر N سحب", "نطاق محدد"])
@@ -359,7 +380,6 @@ def main():
                         target_avg_val, chart_data = analyzer.calculate_custom_average("All")
                         st.caption(f"المتوسط العام: **{target_avg_val:.2f}**")
                     
-                    # عرض الرسم البياني للتأكيد
                     if chart_data:
                         st.line_chart(chart_data, height=150)
                         st.caption("📈 تذبذب مجموع الأرقام في النطاق المختار")
@@ -428,7 +448,7 @@ def main():
                                 color = "green" if len(matches)==inc_cnt else "red"
                                 st.markdown(f":{color}[✅ المطلوب: {inc_cnt} | 🎯 المحقق: {len(matches)} ({list(matches)})]")
 
-    st.markdown(\"\"\"<div class="footer">برمجة وتطوير: <b>محمد العمري</b></div>\"\"\", unsafe_allow_html=True)
+    st.markdown("""<div class="footer">برمجة وتطوير: <b>محمد العمري</b></div>""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
