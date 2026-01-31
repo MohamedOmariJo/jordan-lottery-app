@@ -2,11 +2,10 @@ import streamlit as st
 import random
 import pandas as pd
 from collections import Counter, defaultdict
-from typing import List, Dict, Optional, DefaultDict, Set
+from typing import List, Dict, Optional
 from itertools import chain
 import logging
-import time
-from datetime import datetime
+import os
 
 # ==============================================================================
 # 1. إعدادات النظام
@@ -52,31 +51,28 @@ class LotteryAnalyzer:
         self.frequency = Counter(all_numbers)
         self.total_draws = len(history_df)
         
-        # المتوسط العام (لكل التاريخ)
         all_sums = [sum(nums) for nums in history_df['numbers']]
         self.global_avg_sum = sum(all_sums) / len(all_sums) if all_sums else 0
         
-        # تصنيف الأرقام
         sorted_nums = sorted(range(LotteryConfig.MIN_NUM, LotteryConfig.MAX_NUM + 1), 
                            key=lambda x: self.frequency[x], reverse=True)
         self.hot_pool = set(sorted_nums[:16])
         self.cold_pool = set(sorted_nums[16:])
 
-    def calculate_custom_average(self, mode: str, param1: int = 0, param2: int = 0) -> float:
-        """حساب المتوسط بناءً على نطاق مخصص"""
+    def calculate_custom_average(self, mode: str, param1: int = 0, param2: int = 0) -> tuple:
+        """يعيد (المتوسط, قائمة المجاميع للرسم البياني)"""
         df = self.history_df.copy()
-        
         if mode == "Last N Draws":
             if param1 > len(df): param1 = len(df)
             df = df.iloc[-param1:]
         elif mode == "Specific Range":
             df = df[(df['draw_id'] >= param1) & (df['draw_id'] <= param2)]
         
-        # إذا كانت البيانات فارغة او غير صحيحة، نعود للمتوسط العام
-        if df.empty: return self.global_avg_sum
+        if df.empty: return self.global_avg_sum, []
         
         sums = [sum(nums) for nums in df['numbers']]
-        return sum(sums) / len(sums) if sums else 0
+        avg = sum(sums) / len(sums) if sums else 0
+        return avg, sums
 
     def get_ticket_profile(self, ticket: List[int]) -> str:
         hot_count = sum(1 for n in ticket if n in self.hot_pool)
@@ -153,7 +149,6 @@ class TicketGenerator:
         for _ in range(sample_size):
             candidate = sorted(random.sample(self.full_pool, size))
             
-            # Pivot Check
             inc_draw = criteria.get('include_from_draw')
             inc_cnt = criteria.get('include_count', 0)
             if inc_draw and inc_cnt > 0:
@@ -162,7 +157,6 @@ class TicketGenerator:
                     intersect = len(set(candidate) & set(draw_nums))
                     if intersect != inc_cnt: continue 
 
-            # Standard Checks
             if criteria.get('sequences_count') is not None and TicketValidator.count_sequences(candidate) != criteria['sequences_count']: continue
             if criteria.get('odd_count') is not None and sum(1 for n in candidate if n%2!=0) != criteria['odd_count']: continue
             
@@ -170,7 +164,6 @@ class TicketGenerator:
                 curr = TicketValidator.count_shadow_occurrences(candidate)
                 if not (max(0, criteria['shadows_count']-1) <= curr <= criteria['shadows_count']+1): continue
             
-            # Average Check (Updated)
             if criteria.get('sum_near_avg'):
                 s = sum(candidate)
                 if not (target_avg * (1-sum_tolerance) <= s <= target_avg * (1+sum_tolerance)): continue
@@ -187,7 +180,6 @@ class TicketGenerator:
             strategy = criteria.get('strategy', 'Any')
             target_avg = criteria.get('target_average', self.analyzer.global_avg_sum)
             
-            # Pivot Logic
             include_draw_id = criteria.get('include_from_draw')
             include_count = criteria.get('include_count', 0)
             forced_numbers = []
@@ -199,7 +191,6 @@ class TicketGenerator:
                     forced_numbers = random.sample(source_nums, min(len(source_nums), include_count))
                     forbidden_numbers = set(source_nums) - set(forced_numbers)
             
-            # Pool Selection
             pool_source = self.full_pool
             if strategy == 'Hot': pool_source = list(self.analyzer.hot_pool)
             elif strategy == 'Cold': pool_source = list(self.analyzer.cold_pool)
@@ -214,13 +205,11 @@ class TicketGenerator:
                 random_part = random.sample(current_pool, needed_count)
                 candidate = sorted(forced_numbers + random_part)
                 
-                # Balanced Strategy
                 if strategy == 'Balanced':
                     hot_in_ticket = sum(1 for n in candidate if n in self.analyzer.hot_pool)
                     half = size / 2
                     if not (half - 1 <= hot_in_ticket <= half + 1): continue
 
-                # Standard Checks
                 if criteria.get('sequences_count') is not None and TicketValidator.count_sequences(candidate) != criteria['sequences_count']: continue
                 if criteria.get('odd_count') is not None and sum(1 for n in candidate if n%2!=0) != criteria['odd_count']: continue
                 
@@ -231,7 +220,6 @@ class TicketGenerator:
                     else:
                         if not (max(0, criteria['shadows_count']-1) <= curr <= criteria['shadows_count']+1): continue
                 
-                # Average Check (Using Custom Target)
                 if criteria.get('sum_near_avg'):
                     s = sum(candidate)
                     if not (target_avg * (1-sum_tolerance) <= s <= target_avg * (1+sum_tolerance)): continue
@@ -270,44 +258,62 @@ class TicketGenerator:
         return {"status": status, "requested": count, "generated": len(generated_tickets), "tickets": generated_tickets, "errors": Counter(errors_list).most_common(3)}
 
 # ==============================================================================
-# 5. واجهة المستخدم
+# 5. واجهة المستخدم (v5.2 - Charts & Precision)
 # ==============================================================================
+def load_data(uploaded_file=None):
+    df = None
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        except Exception as e: return None, f"خطأ: {e}"
+    else:
+        for fname in ['data.xlsx', 'data.csv', 'lotto.xlsx', 'lotto.csv']:
+            if os.path.exists(fname):
+                try: df = pd.read_csv(fname) if fname.endswith('.csv') else pd.read_excel(fname); break 
+                except: continue
+        if df is None: return None, "No local file"
+
+    if df is not None:
+        try:
+            # Smart Column Detection
+            if not {'N1', 'N2', 'N3', 'N4', 'N5', 'N6'}.issubset(df.columns):
+                return None, "الملف يجب أن يحتوي على N1..N6"
+            
+            df['numbers'] = df[['N1','N2','N3','N4','N5','N6']].values.tolist()
+            df['numbers'] = df['numbers'].apply(lambda x: sorted([int(n) for n in x]))
+            
+            # Handle Arabic or English ID
+            if 'رقم السحب' in df.columns:
+                df = df.rename(columns={'رقم السحب': 'draw_id'})
+            elif 'DrawID' in df.columns: 
+                df = df.rename(columns={'DrawID': 'draw_id'})
+            elif 'draw_id' not in df.columns:
+                df['draw_id'] = range(1, len(df)+1)
+                
+            return df, "Success"
+        except Exception as e: return None, f"خطأ البيانات: {e}"
+            
+    return None, "No data"
+
 def main():
     st.set_page_config(page_title="نظام لوتري الأردن الذكي", page_icon="🎰", layout="wide", initial_sidebar_state="expanded")
-    st.markdown("""<style>.main {direction: rtl;} h1,h2,h3,p,div,label,span {text-align: right; font-family: 'Segoe UI', sans-serif;} .stMetric {text-align: right !important;} .footer {position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f6; color: #333; text-align: center; padding: 10px; border-top: 1px solid #ddd; font-size: 14px; z-index: 999; font-family: 'Segoe UI', sans-serif; font-weight: bold;} @media (prefers-color-scheme: dark) { .footer {background-color: #0e1117; color: #888; border-top: 1px solid #333;} }</style>""", unsafe_allow_html=True)
+    st.markdown(\"\"\"<style>.main {direction: rtl;} h1,h2,h3,p,div,label,span {text-align: right; font-family: 'Segoe UI', sans-serif;} .stMetric {text-align: right !important;} .footer {position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f0f2f6; color: #333; text-align: center; padding: 10px; border-top: 1px solid #ddd; font-size: 14px; z-index: 999; font-family: 'Segoe UI', sans-serif; font-weight: bold;} @media (prefers-color-scheme: dark) { .footer {background-color: #0e1117; color: #888; border-top: 1px solid #333;} }</style>\"\"\", unsafe_allow_html=True)
 
-    st.title("🎰 نظام لوتري الأردن الذكي (v5.0 Expert)")
+    st.title("🎰 نظام لوتري الأردن الذكي (v5.2 Visuals)")
     
-    # --- Sidebar & Data Loading ---
     with st.sidebar:
         st.header("1. إعدادات البيانات")
-        data_src = st.radio("مصدر البيانات:", ["بيانات وهمية", "رفع ملف Excel"])
+        uploaded_file = st.file_uploader("تحديث البيانات", type=['xlsx', 'csv'])
+        df, msg = load_data(uploaded_file)
         
-        if 'history_df' not in st.session_state:
-            st.session_state.history_df = None
-
-        if data_src == "رفع ملف Excel":
-            f = st.file_uploader("ارفع الملف", type=['xlsx', 'csv'])
-            if f:
-                try:
-                    df = pd.read_csv(f) if f.name.endswith('.csv') else pd.read_excel(f)
-                    if not {'N1', 'N2', 'N3', 'N4', 'N5', 'N6'}.issubset(df.columns):
-                        st.error("خطأ: تأكد من وجود الأعمدة N1 إلى N6")
-                    else:
-                        df['numbers'] = df[['N1','N2','N3','N4','N5','N6']].values.tolist()
-                        df['numbers'] = df['numbers'].apply(lambda x: sorted([int(n) for n in x]))
-                        if 'DrawID' in df.columns: df = df.rename(columns={'DrawID': 'draw_id'})
-                        else: df['draw_id'] = range(1, len(df)+1)
-                        st.session_state.history_df = df
-                        st.success("تم تفعيل الملف!")
-                except Exception as e: st.error(f"خطأ: {e}")
-        else:
-            st.session_state.history_df = MockDataGenerator.create_mock_history(248)
-
-        if st.session_state.history_df is not None:
-            data_hash = hash(str(st.session_state.history_df.values.tobytes()))
+        if df is not None:
+            if uploaded_file: st.success("✅ ملف جديد")
+            else: st.info("📂 ملف تلقائي")
+            
+            st.session_state.history_df = df
+            data_hash = hash(str(df.values.tobytes()))
             if 'data_hash' not in st.session_state or st.session_state.data_hash != data_hash:
-                st.session_state.analyzer = LotteryAnalyzer(st.session_state.history_df)
+                st.session_state.analyzer = LotteryAnalyzer(df)
                 st.session_state.generator = TicketGenerator(st.session_state.analyzer)
                 st.session_state.data_hash = data_hash
             
@@ -315,39 +321,48 @@ def main():
             generator = st.session_state.generator
             st.metric("إجمالي السحوبات", analyzer.total_draws)
             st.metric("المتوسط العام", f"{analyzer.global_avg_sum:.2f}")
+            
+        else:
+            st.warning("⚠️ بيانات وهمية (للتجربة)")
+            st.session_state.history_df = MockDataGenerator.create_mock_history(248)
+            st.session_state.analyzer = LotteryAnalyzer(st.session_state.history_df)
+            st.session_state.generator = TicketGenerator(st.session_state.analyzer)
+            analyzer = st.session_state.analyzer
+            generator = st.session_state.generator
 
-    if st.session_state.history_df is not None:
+    if 'history_df' in st.session_state:
         col1, col2 = st.columns([1, 1.5])
         with col1:
             st.subheader("⚙️ إعدادات التوليد")
-            
             strategy = st.selectbox("🎯 استراتيجية الأرقام", ["Any (الكل)", "Hot (ساخنة)", "Cold (باردة)", "Balanced (متوازنة)"])
             strategy_map = {"Any (الكل)": "Any", "Hot (ساخنة)": "Hot", "Cold (باردة)": "Cold", "Balanced (متوازنة)": "Balanced"}
             
-            # --- التحكم الجديد بالمتوسط ---
             with st.container(border=True):
                 st.markdown("**📊 ضبط المتوسط الحسابي**")
                 avg_chk = st.checkbox("الالتزام بالمتوسط", value=True)
-                
-                target_avg_val = analyzer.global_avg_sum # افتراضي
+                target_avg_val = analyzer.global_avg_sum
+                chart_data = [] # للرسم البياني
                 
                 if avg_chk:
                     avg_mode = st.selectbox("المرجع لحساب المتوسط:", ["كافة السحوبات (Default)", "آخر N سحب", "نطاق محدد"])
-                    
                     if avg_mode == "آخر N سحب":
                         n_draws = st.number_input("عدد السحوبات الأخيرة", 5, analyzer.total_draws, 20)
-                        target_avg_val = analyzer.calculate_custom_average("Last N Draws", param1=n_draws)
-                        st.caption(f"متوسط آخر {n_draws} سحب هو: **{target_avg_val:.2f}**")
-                    
+                        target_avg_val, chart_data = analyzer.calculate_custom_average("Last N Draws", param1=n_draws)
+                        st.caption(f"متوسط آخر {n_draws} سحب: **{target_avg_val:.2f}**")
                     elif avg_mode == "نطاق محدد":
                         c1, c2 = st.columns(2)
-                        start_d = c1.number_input("من سحب رقم", 1, analyzer.total_draws, max(1, analyzer.total_draws-50))
-                        end_d = c2.number_input("إلى سحب رقم", 1, analyzer.total_draws, analyzer.total_draws)
-                        target_avg_val = analyzer.calculate_custom_average("Specific Range", param1=start_d, param2=end_d)
-                        st.caption(f"المتوسط في هذا النطاق هو: **{target_avg_val:.2f}**")
-                    
+                        start_d = c1.number_input("من سحب", 1, analyzer.total_draws, max(1, analyzer.total_draws-50))
+                        end_d = c2.number_input("إلى سحب", 1, analyzer.total_draws, analyzer.total_draws)
+                        target_avg_val, chart_data = analyzer.calculate_custom_average("Specific Range", param1=start_d, param2=end_d)
+                        st.caption(f"المتوسط للنطاق: **{target_avg_val:.2f}**")
                     else:
-                        st.caption(f"المتوسط العام التاريخي: **{target_avg_val:.2f}**")
+                        target_avg_val, chart_data = analyzer.calculate_custom_average("All")
+                        st.caption(f"المتوسط العام: **{target_avg_val:.2f}**")
+                    
+                    # عرض الرسم البياني للتأكيد
+                    if chart_data:
+                        st.line_chart(chart_data, height=150)
+                        st.caption("📈 تذبذب مجموع الأرقام في النطاق المختار")
 
             with st.container(border=True):
                 t_count = st.number_input("عدد التذاكر", 1, 10, 3)
@@ -373,7 +388,7 @@ def main():
             criteria = {
                 'size': t_size, 'sequences_count': seq, 'odd_count': odd, 
                 'shadows_count': sha, 'anti_match_limit': anti, 'sum_near_avg': avg_chk,
-                'target_average': target_avg_val, # المتوسط المخصص الجديد
+                'target_average': target_avg_val,
                 'include_from_draw': inc_draw if use_past else None, 'include_count': inc_cnt if use_past else 0,
                 'strategy': strategy_map[strategy]
             }
@@ -413,7 +428,7 @@ def main():
                                 color = "green" if len(matches)==inc_cnt else "red"
                                 st.markdown(f":{color}[✅ المطلوب: {inc_cnt} | 🎯 المحقق: {len(matches)} ({list(matches)})]")
 
-    st.markdown("""<div class="footer">برمجة وتطوير: <b>محمد العمري</b></div>""", unsafe_allow_html=True)
+    st.markdown(\"\"\"<div class="footer">برمجة وتطوير: <b>محمد العمري</b></div>\"\"\", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
