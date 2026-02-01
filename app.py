@@ -26,6 +26,10 @@ class LotteryConfig:
     STRICT_SHADOW_ATTEMPTS = 15000
     DEFAULT_SUM_TOLERANCE = 0.15
     MAX_BATCH_SIZE = 10
+    
+    # رابط ملف البيانات الافتراضي على GitHub
+    # قم بتغيير هذا الرابط إلى رابط ملفك الخاص
+    DEFAULT_GITHUB_URL = "https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/history.xlsx"
 
 def initialize_session_state():
     """تهيئة متغيرات الجلسة"""
@@ -37,11 +41,13 @@ def initialize_session_state():
         st.session_state.generator = None
     if 'last_result' not in st.session_state: 
         st.session_state.last_result = None
+    if 'data_loaded' not in st.session_state:
+        st.session_state.data_loaded = False
 
 # ==============================================================================
 # 2. دالة جلب الملف من GitHub
 # ==============================================================================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)  # التخزين المؤقت لمدة ساعة
 def load_from_github(github_url: str) -> Tuple[Optional[pd.DataFrame], str]:
     """
     تحميل ملف Excel من GitHub
@@ -112,7 +118,7 @@ def load_from_github(github_url: str) -> Tuple[Optional[pd.DataFrame], str]:
         # إعادة تعيين الفهرس
         df = df.reset_index(drop=True)
             
-        return df, f"تم تحميل {len(df)} سحب بنجاح من GitHub ✅"
+        return df, f"تم تحميل {len(df)} سحب بنجاح ✅"
         
     except requests.exceptions.RequestException as e:
         logger.error(f"GitHub loading error: {e}")
@@ -559,64 +565,39 @@ def main():
     st.title("🎰 نظام توليد وفحص تذاكر اليانصيب الأردني")
     initialize_session_state()
     
-    # قسم تحميل البيانات
-    st.sidebar.header("📊 تحميل البيانات")
-    
-    data_source = st.sidebar.radio(
-        "اختر مصدر البيانات:",
-        ["📁 رفع ملف محلي", "🔗 تحميل من GitHub"],
-        help="اختر كيف تريد تحميل بيانات السحوبات السابقة"
-    )
-    
-    if data_source == "🔗 تحميل من GitHub":
-        st.sidebar.info("💡 استخدم رابط الملف المباشر (raw) من GitHub")
-        
-        github_url = st.sidebar.text_input(
-            "رابط الملف على GitHub:",
-            value="",
-            placeholder="https://raw.githubusercontent.com/...",
-            help="الصق رابط الملف من GitHub هنا"
-        )
-        
-        # زر لتحميل من GitHub
-        if st.sidebar.button("📥 تحميل من GitHub", type="primary"):
-            if not github_url:
-                st.sidebar.error("⚠️ الرجاء إدخال رابط الملف")
+    # تحميل البيانات تلقائياً عند أول تشغيل
+    if not st.session_state.data_loaded:
+        with st.spinner("جاري تحميل البيانات من GitHub..."):
+            df, msg = load_from_github(LotteryConfig.DEFAULT_GITHUB_URL)
+            
+            if df is not None:
+                st.session_state.history_df = df
+                st.session_state.analyzer = LotteryAnalyzer(df)
+                st.session_state.generator = TicketGenerator(st.session_state.analyzer)
+                st.session_state.data_loaded = True
+                st.success(msg)
             else:
-                with st.spinner("جاري تحميل الملف من GitHub..."):
-                    df, msg = load_from_github(github_url)
-                    
-                    if df is not None:
-                        st.session_state.history_df = df
-                        st.session_state.analyzer = LotteryAnalyzer(df)
-                        st.session_state.generator = TicketGenerator(st.session_state.analyzer)
-                        st.sidebar.success(msg)
-                        st.rerun()
-                    else:
-                        st.sidebar.error(msg)
-        
-        # عرض معلومات إضافية
-        with st.sidebar.expander("ℹ️ كيفية الحصول على رابط GitHub"):
-            st.markdown("""
-            **خطوات الحصول على الرابط:**
-            1. افتح الملف في GitHub
-            2. اضغط على زر "Raw"
-            3. انسخ الرابط من شريط العنوان
-            
-            **مثال على الرابط الصحيح:**
-            ```
-            https://raw.githubusercontent.com/
-            username/repo-name/main/248.xlsx
-            ```
-            
-            **ملاحظة:** يجب أن يكون الملف عاماً (Public Repository)
-            """)
+                st.error("⚠️ " + msg)
+                st.warning("يمكنك تحميل ملف البيانات يدوياً من الشريط الجانبي")
     
-    else:  # رفع ملف محلي
-        uploaded_file = st.sidebar.file_uploader(
+    # قسم تحميل البيانات في الشريط الجانبي (اختياري)
+    with st.sidebar.expander("🔄 تحديث البيانات", expanded=False):
+        st.info("البيانات محملة تلقائياً من GitHub. يمكنك إعادة تحميلها أو رفع ملف جديد.")
+        
+        if st.button("🔄 إعادة تحميل من GitHub"):
+            # مسح الذاكرة المؤقتة
+            load_from_github.clear()
+            st.session_state.data_loaded = False
+            st.rerun()
+        
+        st.markdown("---")
+        st.markdown("**أو ارفع ملف محلي:**")
+        
+        uploaded_file = st.file_uploader(
             "اختر ملف Excel/CSV:", 
             type=['xlsx', 'xls', 'csv'],
-            help="ارفع ملف يحتوي على بيانات السحوبات السابقة"
+            help="ارفع ملف يحتوي على بيانات السحوبات السابقة",
+            key="file_uploader"
         )
         
         if uploaded_file:
@@ -627,15 +608,21 @@ def main():
                     st.session_state.history_df = df
                     st.session_state.analyzer = LotteryAnalyzer(df)
                     st.session_state.generator = TicketGenerator(st.session_state.analyzer)
-                    st.sidebar.success(f"تم تحميل {len(df)} سحب بنجاح ✅")
+                    st.session_state.data_loaded = True
+                    st.success(f"تم تحميل {len(df)} سحب بنجاح ✅")
+                    st.rerun()
                 else:
-                    st.sidebar.error(msg)
-                    st.stop()
+                    st.error(msg)
     
     # التحقق من تحميل البيانات
     if st.session_state.history_df is None:
-        st.warning("⚠️ الرجاء تحميل ملف البيانات من الشريط الجانبي للمتابعة")
+        st.warning("⚠️ لم يتم تحميل البيانات بنجاح")
         st.info("""
+        **حاول:**
+        - التحقق من اتصالك بالإنترنت
+        - التأكد من أن رابط GitHub صحيح في ملف الكود
+        - رفع ملف البيانات يدوياً من الشريط الجانبي
+        
         **متطلبات الملف:**
         - يجب أن يحتوي على أعمدة: N1, N2, N3, N4, N5, N6
         - الأرقام يجب أن تكون بين 1 و 32
@@ -648,8 +635,13 @@ def main():
     
     # عرض معلومات البيانات
     st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📊 معلومات البيانات")
     st.sidebar.metric("📈 إجمالي السحوبات", analyzer.total_draws)
     st.sidebar.metric("📊 متوسط المجموع", f"{analyzer.global_avg_sum:.1f}")
+    
+    # معلومات التحديث
+    st.sidebar.markdown("---")
+    st.sidebar.info("💡 **ملاحظة:** يتم تحديث البيانات تلقائياً كل أحد وأربعاء")
     
     # --------------------------------------------------------
     # Tabs
