@@ -559,10 +559,46 @@ def main():
             .main > div { padding-top: 2rem; }
             .stButton>button { width: 100%; }
             .footer { text-align: center; margin-top: 50px; color: gray; font-size: 0.9em; }
+            
+            .fancy-title {
+                text-align: center;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 25px;
+                border-radius: 15px;
+                box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
+                margin-bottom: 30px;
+                border: 3px solid #ffffff;
+            }
+            
+            .fancy-title h1 {
+                color: #ffffff;
+                font-size: 2.5em;
+                font-weight: 800;
+                margin: 0;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                letter-spacing: 1px;
+                font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+                white-space: nowrap;
+            }
+            
+            .fancy-title .emoji {
+                font-size: 1.2em;
+                margin: 0 10px;
+                animation: pulse 2s infinite;
+            }
+            
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.1); }
+            }
         </style>
+        
+        <div class="fancy-title">
+            <h1><span class="emoji">🎯</span>القناص لفحص وتوليد تذاكر لوتري الأردن<span class="emoji">🎰</span></h1>
+        </div>
     """, unsafe_allow_html=True)
     
-    st.title("🎰 نظام محمد العمري لفحص وتوليد تذاكر لوتري الأردن")
+    # st.title("🎰 نظام محمد العمري لفحص وتوليد تذاكر لوتري الأردن")
     initialize_session_state()
     
     # تحميل البيانات تلقائياً عند أول تشغيل
