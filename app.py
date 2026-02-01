@@ -2,13 +2,14 @@ import streamlit as st
 import random
 import pandas as pd
 from collections import Counter, defaultdict
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Set, Union
 from itertools import chain
 import logging
+import time
 import os
 
 # ==============================================================================
-# 1. إعدادات النظام
+# 1. إعدادات النظام والتهيئة
 # ==============================================================================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%H:%M:%S')
 logger = logging.getLogger("JordanLottery")
@@ -24,6 +25,68 @@ class LotteryConfig:
     DEFAULT_SUM_TOLERANCE = 0.15
     MAX_BATCH_SIZE = 10
 
+def initialize_session_state():
+    """تهيئة متغيرات الجلسة بشكل آمن لمنع الأخطاء"""
+    if 'history_df' not in st.session_state: st.session_state.history_df = None
+    if 'analyzer' not in st.session_state: st.session_state.analyzer = None
+    if 'generator' not in st.session_state: st.session_state.generator = None
+    if 'last_result' not in st.session_state: st.session_state.last_result = None
+    if 'data_source_type' not in st.session_state: st.session_state.data_source_type = "None"
+
+# ==============================================================================
+# 2. طبقة البيانات (Robust Data Layer)
+# ==============================================================================
+@st.cache_data(show_spinner=False)
+def load_and_process_data(file_input: Union[str, st.runtime.uploaded_file_manager.UploadedFile]) -> Tuple[Optional[pd.DataFrame], str]:
+    try:
+        is_csv = False
+        file_ref = file_input
+        
+        if isinstance(file_input, str):
+            is_csv = file_input.endswith('.csv')
+        else:
+            is_csv = file_input.name.endswith('.csv')
+
+        if is_csv:
+            df = pd.read_csv(file_ref)
+        else:
+            df = pd.read_excel(file_ref)
+        
+        df.dropna(how='all', inplace=True)
+        
+        cols = ['N1','N2','N3','N4','N5','N6']
+        if not set(cols).issubset(df.columns):
+             return None, "الملف لا يحتوي على الأعمدة المطلوبة (N1...N6)"
+
+        for c in cols:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+        
+        df.dropna(subset=cols, inplace=True)
+        df['numbers'] = df[cols].values.tolist()
+        
+        def is_valid_draw(nums):
+            return all(LotteryConfig.MIN_NUM <= int(n) <= LotteryConfig.MAX_NUM for n in nums)
+
+        df = df[df['numbers'].apply(is_valid_draw)]
+
+        if df.empty:
+            return None, "لا توجد بيانات صالحة (تأكد أن الأرقام بين 1 و 32)."
+
+        df['numbers'] = df['numbers'].apply(lambda x: sorted([int(n) for n in x]))
+        
+        if 'رقم السحب' in df.columns:
+            df = df.rename(columns={'رقم السحب': 'draw_id'})
+        elif 'DrawID' in df.columns:
+            df = df.rename(columns={'DrawID': 'draw_id'})
+        elif 'draw_id' not in df.columns:
+            df['draw_id'] = range(1, len(df) + 1)
+            
+        return df, "Success"
+        
+    except Exception as e:
+        logger.error(f"Data loading error: {e}")
+        return None, f"خطأ في معالجة الملف: {str(e)}"
+
 class MockDataGenerator:
     @staticmethod
     def create_mock_history(rows: int = 248) -> pd.DataFrame:
@@ -34,7 +97,7 @@ class MockDataGenerator:
         return pd.DataFrame(data)
 
 # ==============================================================================
-# 2. المحلل الإحصائي
+# 3. المحلل الإحصائي (Core Logic - Fixed)
 # ==============================================================================
 class LotteryAnalyzer:
     def __init__(self, history_df: pd.DataFrame):
@@ -68,7 +131,6 @@ class LotteryAnalyzer:
             df = df[(df['draw_id'] >= param1) & (df['draw_id'] <= param2)]
         
         if df.empty: return self.global_avg_sum, []
-        
         sums = [sum(nums) for nums in df['numbers']]
         avg = sum(sums) / len(sums) if sums else 0
         return avg, sums
@@ -83,8 +145,70 @@ class LotteryAnalyzer:
     def get_numbers_from_draw(self, draw_id: int) -> Optional[List[int]]:
         return self.draw_map.get(draw_id)
 
+    # --- دوال الفحص التاريخي ---
+    def check_matches_history(self, ticket_numbers: List[int]) -> Dict[int, List[Dict]]:
+        matches_found = {6: [], 5: [], 4: []}
+        ticket_set = set(ticket_numbers)
+        for draw_id, draw_nums in self.draw_map.items():
+            intersection = ticket_set & set(draw_nums)
+            count = len(intersection)
+            if count in matches_found:
+                matches_found[count].append({'draw_id': draw_id, 'matched_nums': sorted(list(intersection))})
+        return matches_found
+
+    def get_numbers_frequency_stats(self, ticket_numbers: List[int]) -> pd.DataFrame:
+        stats = []
+        for num in ticket_numbers:
+            count = self.frequency.get(num, 0)
+            stats.append({'الرقم': num, 'عدد مرات الظهور': count})
+        return pd.DataFrame(stats).sort_values(by='عدد مرات الظهور', ascending=False)
+
+    def analyze_sequences_history(self, ticket_numbers: List[int]) -> Dict:
+        sorted_nums = sorted(ticket_numbers)
+        sequences = []
+        if not sorted_nums: return {}
+        
+        temp_seq = [sorted_nums[0]]
+        for i in range(1, len(sorted_nums)):
+            if sorted_nums[i] == sorted_nums[i-1] + 1:
+                temp_seq.append(sorted_nums[i])
+            else:
+                if len(temp_seq) >= 2: sequences.append(temp_seq)
+                temp_seq = [sorted_nums[i]]
+        if len(temp_seq) >= 2: sequences.append(temp_seq)
+        
+        results = {}
+        for seq in sequences:
+            seq_tuple = tuple(seq)
+            results[seq_tuple] = {
+                'full_count': 0, 
+                'full_draws': [], 
+                'sub': {}
+            }
+            seq_set = set(seq)
+            
+            for draw_id, draw_nums in self.draw_map.items():
+                draw_set = set(draw_nums)
+                if seq_set.issubset(draw_set):
+                    results[seq_tuple]['full_count'] += 1
+                    results[seq_tuple]['full_draws'].append(draw_id)
+            
+            if len(seq) > 2:
+                for i in range(len(seq) - 1):
+                    sub_pair = (seq[i], seq[i+1])
+                    sub_set = set(sub_pair)
+                    results[seq_tuple]['sub'][sub_pair] = {'count': 0, 'draws': []}
+                    
+                    for draw_id, draw_nums in self.draw_map.items():
+                        draw_set = set(draw_nums)
+                        if sub_set.issubset(draw_set):
+                            results[seq_tuple]['sub'][sub_pair]['count'] += 1
+                            results[seq_tuple]['sub'][sub_pair]['draws'].append(draw_id)
+                            
+        return results
+
 # ==============================================================================
-# 3. المدقق
+# 4. المدقق والمولد
 # ==============================================================================
 class TicketValidator:
     @staticmethod
@@ -119,9 +243,6 @@ class TicketValidator:
             analysis['profile'] = analyzer.get_ticket_profile(numbers)
         return analysis
 
-# ==============================================================================
-# 4. محرك التوليد
-# ==============================================================================
 class TicketGenerator:
     def __init__(self, analyzer: LotteryAnalyzer):
         self.analyzer = analyzer
@@ -147,7 +268,6 @@ class TicketGenerator:
 
         for _ in range(sample_size):
             candidate = sorted(random.sample(self.full_pool, size))
-            
             inc_draw = criteria.get('include_from_draw')
             inc_cnt = criteria.get('include_count', 0)
             if inc_draw and inc_cnt > 0:
@@ -158,15 +278,12 @@ class TicketGenerator:
 
             if criteria.get('sequences_count') is not None and TicketValidator.count_sequences(candidate) != criteria['sequences_count']: continue
             if criteria.get('odd_count') is not None and sum(1 for n in candidate if n%2!=0) != criteria['odd_count']: continue
-            
             if criteria.get('shadows_count') is not None:
                 curr = TicketValidator.count_shadow_occurrences(candidate)
                 if not (max(0, criteria['shadows_count']-1) <= curr <= criteria['shadows_count']+1): continue
-            
             if criteria.get('sum_near_avg'):
                 s = sum(candidate)
                 if not (target_avg * (1-sum_tolerance) <= s <= target_avg * (1+sum_tolerance)): continue
-
             passed += 1
         
         prob = (passed / sample_size) * 100
@@ -196,7 +313,6 @@ class TicketGenerator:
             
             current_pool = [n for n in pool_source if n not in forced_numbers and n not in forbidden_numbers]
             needed_count = size - len(forced_numbers)
-            
             if len(current_pool) < needed_count:
                 current_pool = [n for n in self.full_pool if n not in forced_numbers and n not in forbidden_numbers]
 
@@ -211,22 +327,18 @@ class TicketGenerator:
 
                 if criteria.get('sequences_count') is not None and TicketValidator.count_sequences(candidate) != criteria['sequences_count']: continue
                 if criteria.get('odd_count') is not None and sum(1 for n in candidate if n%2!=0) != criteria['odd_count']: continue
-                
                 if criteria.get('shadows_count') is not None:
                     curr = TicketValidator.count_shadow_occurrences(candidate)
                     if attempt < LotteryConfig.STRICT_SHADOW_ATTEMPTS:
                         if curr != criteria['shadows_count']: continue
                     else:
                         if not (max(0, criteria['shadows_count']-1) <= curr <= criteria['shadows_count']+1): continue
-                
                 if criteria.get('sum_near_avg'):
                     s = sum(candidate)
                     if not (target_avg * (1-sum_tolerance) <= s <= target_avg * (1+sum_tolerance)): continue
-                
                 if criteria.get('anti_match_limit') and not TicketValidator.check_anti_match_optimized(set(candidate), self.analyzer, criteria['anti_match_limit']): continue
                 
                 return {"status": "success", "ticket": candidate, "attempts": attempt + 1}
-            
             return {"status": "error", "reason": "استنفاد المحاولات"}
         except Exception as e:
             return {"status": "error", "reason": f"خطأ داخلي: {str(e)}"}
@@ -240,6 +352,8 @@ class TicketGenerator:
         seen_signatures = set()
         errors_list = []
         
+        progress_bar = st.progress(0)
+        
         for i in range(actual_count):
             for retry in range(50):
                 res = self._generate_single_ticket(criteria, LotteryConfig.DEFAULT_SUM_TOLERANCE)
@@ -252,55 +366,22 @@ class TicketGenerator:
                         break
                 else:
                     if retry == 0: errors_list.append(res['reason'])
+            
+            progress_bar.progress((i + 1) / actual_count)
         
+        progress_bar.empty()
         status = "success" if len(generated_tickets) == actual_count else ("partial_success" if generated_tickets else "failed")
         return {"status": status, "requested": count, "generated": len(generated_tickets), "tickets": generated_tickets, "errors": Counter(errors_list).most_common(3)}
 
 # ==============================================================================
-# 5. واجهة المستخدم (v5.5 Safe CSS)
+# 5. واجهة المستخدم (v8.0 Fixed)
 # ==============================================================================
-def load_data(uploaded_file=None):
-    df = None
-    if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-        except Exception as e: return None, f"خطأ: {e}"
-    else:
-        for fname in ['data.xlsx', 'data.csv', 'lotto.xlsx', 'lotto.csv']:
-            if os.path.exists(fname):
-                try: df = pd.read_csv(fname) if fname.endswith('.csv') else pd.read_excel(fname); break 
-                except: continue
-        if df is None: return None, "No local file"
-
-    if df is not None:
-        try:
-            if not {'N1', 'N2', 'N3', 'N4', 'N5', 'N6'}.issubset(df.columns):
-                return None, "الملف يجب أن يحتوي على N1..N6"
-            
-            df['numbers'] = df[['N1','N2','N3','N4','N5','N6']].values.tolist()
-            df['numbers'] = df['numbers'].apply(lambda x: sorted([int(n) for n in x]))
-            
-            if 'رقم السحب' in df.columns:
-                df = df.rename(columns={'رقم السحب': 'draw_id'})
-            elif 'DrawID' in df.columns: 
-                df = df.rename(columns={'DrawID': 'draw_id'})
-            elif 'draw_id' not in df.columns:
-                df['draw_id'] = range(1, len(df)+1)
-                
-            return df, "Success"
-        except Exception as e: return None, f"خطأ البيانات: {e}"
-            
-    return None, "No data"
-
 def main():
-    st.set_page_config(
-        page_title="نظام لوتري الأردن الذكي", 
-        page_icon="🎰", 
-        layout="wide", 
-        initial_sidebar_state="expanded"
-    )
+    st.set_page_config(page_title="نظام لوتري الأردن الذكي", page_icon="🎰", layout="wide", initial_sidebar_state="expanded")
+    
+    initialize_session_state()
 
-    # وضعنا التصميم هنا في متغير منفصل لتجنب مشاكل الأقواس
+    # CSS - مفصول وآمن
     custom_css = """
     <style>
     .main { direction: rtl; }
@@ -313,140 +394,232 @@ def main():
         border-top: 1px solid #ddd; font-size: 14px;
         z-index: 999; font-family: 'Segoe UI', sans-serif; font-weight: bold;
     }
+    .warning-box {
+        background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 10px; text-align: center;
+    }
+    .success-box {
+        background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; border: 1px solid #c3e6cb; margin-bottom: 10px; text-align: center;
+    }
     @media (prefers-color-scheme: dark) {
         .footer { background-color: #0e1117; color: #888; border-top: 1px solid #333; }
+        .warning-box { background-color: #4d4d00; color: #ffffcc; border: 1px solid #666600; }
+        .success-box { background-color: #003300; color: #ccffcc; border: 1px solid #006600; }
     }
     </style>
     """
     st.markdown(custom_css, unsafe_allow_html=True)
 
-    st.title("🎰 نظام لوتري الأردن الذكي (v5.5 Final)")
+    st.title("🎰 نظام لوتري الأردن الذكي (v8.0 Fixed)")
     
+    # --- Sidebar ---
     with st.sidebar:
         st.header("1. إعدادات البيانات")
-        uploaded_file = st.file_uploader("تحديث البيانات", type=['xlsx', 'csv'])
-        df, msg = load_data(uploaded_file)
+        uploaded_file = st.file_uploader("تحديث البيانات (اختياري)", type=['xlsx', 'csv'])
         
+        df = None
+        msg = ""
+        
+        if uploaded_file:
+            df, msg = load_and_process_data(uploaded_file)
+            if df is not None:
+                st.session_state.data_source_type = "Uploaded"
+                st.success("✅ تم تحميل ملف جديد")
+            else:
+                st.error(msg)
+        
+        elif st.session_state.history_df is None or st.session_state.data_source_type == "Mock":
+             for fname in ['data.xlsx', 'data.csv', 'lotto.xlsx', 'lotto.csv']:
+                if os.path.exists(fname):
+                    df, msg = load_and_process_data(fname)
+                    if df is not None:
+                        st.session_state.data_source_type = "Local"
+                        st.info("📂 تم تحميل الملف التلقائي")
+                    break
+
         if df is not None:
-            if uploaded_file: st.success("✅ ملف جديد")
-            else: st.info("📂 ملف تلقائي")
-            
             st.session_state.history_df = df
-            data_hash = hash(str(df.values.tobytes()))
-            if 'data_hash' not in st.session_state or st.session_state.data_hash != data_hash:
+            if st.session_state.analyzer is None or len(st.session_state.analyzer.history_df) != len(df):
                 st.session_state.analyzer = LotteryAnalyzer(df)
                 st.session_state.generator = TicketGenerator(st.session_state.analyzer)
-                st.session_state.data_hash = data_hash
-            
-            analyzer = st.session_state.analyzer
-            generator = st.session_state.generator
+        
+        elif st.session_state.history_df is None:
+            st.session_state.data_source_type = "Mock"
+            mock_df = MockDataGenerator.create_mock_history(248)
+            st.session_state.history_df = mock_df
+            st.session_state.analyzer = LotteryAnalyzer(mock_df)
+            st.session_state.generator = TicketGenerator(st.session_state.analyzer)
+
+        analyzer = st.session_state.analyzer
+        if analyzer:
             st.metric("إجمالي السحوبات", analyzer.total_draws)
             st.metric("المتوسط العام", f"{analyzer.global_avg_sum:.2f}")
-            
-        else:
-            st.warning("⚠️ بيانات وهمية (للتجربة)")
-            st.session_state.history_df = MockDataGenerator.create_mock_history(248)
-            st.session_state.analyzer = LotteryAnalyzer(st.session_state.history_df)
-            st.session_state.generator = TicketGenerator(st.session_state.analyzer)
-            analyzer = st.session_state.analyzer
-            generator = st.session_state.generator
 
-    if 'history_df' in st.session_state:
-        col1, col2 = st.columns([1, 1.5])
-        with col1:
-            st.subheader("⚙️ إعدادات التوليد")
-            strategy = st.selectbox("🎯 استراتيجية الأرقام", ["Any (الكل)", "Hot (ساخنة)", "Cold (باردة)", "Balanced (متوازنة)"])
-            strategy_map = {"Any (الكل)": "Any", "Hot (ساخنة)": "Hot", "Cold (باردة)": "Cold", "Balanced (متوازنة)": "Balanced"}
-            
-            with st.container(border=True):
-                st.markdown("**📊 ضبط المتوسط الحسابي**")
-                avg_chk = st.checkbox("الالتزام بالمتوسط", value=True)
-                target_avg_val = analyzer.global_avg_sum
-                chart_data = [] 
+    if st.session_state.data_source_type == "Mock":
+        st.markdown('<div class="warning-box">⚠️ تنبيه: أنت تعمل الآن على بيانات وهمية عشوائية (للتجربة فقط). النتائج ستتغير مع كل تحديث. الرجاء رفع ملف البيانات للحصول على نتائج حقيقية.</div>', unsafe_allow_html=True)
+    elif st.session_state.data_source_type in ["Uploaded", "Local"]:
+        st.markdown('<div class="success-box">✅ أنت تعمل على بيانات حقيقية من الملف.</div>', unsafe_allow_html=True)
+
+    analyzer = st.session_state.analyzer
+    generator = st.session_state.generator
+
+    # --- TABS ---
+    tab1, tab2 = st.tabs(["🚀 توليد تذاكر جديدة", "🔍 فحص تذكرة تاريخي"])
+
+    with tab1:
+        if analyzer:
+            col1, col2 = st.columns([1, 1.5])
+            with col1:
+                st.subheader("⚙️ إعدادات التوليد")
+                strategy = st.selectbox("🎯 استراتيجية الأرقام", ["Any (الكل)", "Hot (ساخنة)", "Cold (باردة)", "Balanced (متوازنة)"])
+                strategy_map = {"Any (الكل)": "Any", "Hot (ساخنة)": "Hot", "Cold (باردة)": "Cold", "Balanced (متوازنة)": "Balanced"}
                 
-                if avg_chk:
-                    avg_mode = st.selectbox("المرجع لحساب المتوسط:", ["كافة السحوبات (Default)", "آخر N سحب", "نطاق محدد"])
-                    if avg_mode == "آخر N سحب":
-                        n_draws = st.number_input("عدد السحوبات الأخيرة", 5, analyzer.total_draws, 20)
-                        target_avg_val, chart_data = analyzer.calculate_custom_average("Last N Draws", param1=n_draws)
-                        st.caption(f"متوسط آخر {n_draws} سحب: **{target_avg_val:.2f}**")
-                    elif avg_mode == "نطاق محدد":
+                with st.container(border=True):
+                    st.markdown("**📊 ضبط المتوسط الحسابي**")
+                    avg_chk = st.checkbox("الالتزام بالمتوسط", value=True)
+                    target_avg_val = analyzer.global_avg_sum
+                    chart_data = [] 
+                    if avg_chk:
+                        avg_mode = st.selectbox("المرجع لحساب المتوسط:", ["كافة السحوبات (Default)", "آخر N سحب", "نطاق محدد"])
+                        if avg_mode == "آخر N سحب":
+                            n_draws = st.number_input("عدد السحوبات الأخيرة", 5, analyzer.total_draws, 20)
+                            target_avg_val, chart_data = analyzer.calculate_custom_average("Last N Draws", param1=n_draws)
+                            st.caption(f"متوسط آخر {n_draws} سحب: **{target_avg_val:.2f}**")
+                        elif avg_mode == "نطاق محدد":
+                            c1, c2 = st.columns(2)
+                            start_d = c1.number_input("من سحب", 1, analyzer.total_draws, max(1, analyzer.total_draws-50))
+                            end_d = c2.number_input("إلى سحب", 1, analyzer.total_draws, analyzer.total_draws)
+                            target_avg_val, chart_data = analyzer.calculate_custom_average("Specific Range", param1=start_d, param2=end_d)
+                            st.caption(f"المتوسط للنطاق: **{target_avg_val:.2f}**")
+                        else:
+                            target_avg_val, chart_data = analyzer.calculate_custom_average("All")
+                            st.caption(f"المتوسط العام: **{target_avg_val:.2f}**")
+                        if chart_data: st.line_chart(chart_data, height=150)
+
+                with st.container(border=True):
+                    t_count = st.number_input("عدد التذاكر", 1, 10, 3)
+                    t_size = st.slider("حجم التذكرة", 6, 10, 6)
+                    odd = st.number_input("عدد الفردي", 0, t_size, t_size//2)
+                    seq = st.number_input("عدد المتتاليات", 0, t_size-1, 0)
+                    sha = st.number_input("عدد الظلال", 0, 3, 1)
+
+                with st.container(border=True):
+                    st.markdown("**🔄 تكرار صارم (Pivot)**")
+                    use_past = st.checkbox("تثبيت أرقام من سحب سابق")
+                    inc_draw = None; inc_cnt = 0
+                    if use_past:
                         c1, c2 = st.columns(2)
-                        start_d = c1.number_input("من سحب", 1, analyzer.total_draws, max(1, analyzer.total_draws-50))
-                        end_d = c2.number_input("إلى سحب", 1, analyzer.total_draws, analyzer.total_draws)
-                        target_avg_val, chart_data = analyzer.calculate_custom_average("Specific Range", param1=start_d, param2=end_d)
-                        st.caption(f"المتوسط للنطاق: **{target_avg_val:.2f}**")
-                    else:
-                        target_avg_val, chart_data = analyzer.calculate_custom_average("All")
-                        st.caption(f"المتوسط العام: **{target_avg_val:.2f}**")
-                    
-                    if chart_data:
-                        st.line_chart(chart_data, height=150)
-                        st.caption("📈 تذبذب مجموع الأرقام في النطاق المختار")
-
-            with st.container(border=True):
-                t_count = st.number_input("عدد التذاكر", 1, 10, 3)
-                t_size = st.slider("حجم التذكرة", 6, 10, 6)
-                odd = st.number_input("عدد الفردي", 0, t_size, t_size//2)
-                seq = st.number_input("عدد المتتاليات", 0, t_size-1, 0)
-                sha = st.number_input("عدد الظلال", 0, 3, 1)
-
-            with st.container(border=True):
-                st.markdown("**🔄 تكرار صارم (Pivot)**")
-                use_past = st.checkbox("تثبيت أرقام من سحب سابق")
-                inc_draw = None; inc_cnt = 0
-                if use_past:
-                    c1, c2 = st.columns(2)
-                    inc_draw = c1.number_input("رقم السحب", 1, analyzer.total_draws, analyzer.total_draws)
-                    inc_cnt = c2.number_input("عدد الأرقام", 1, min(6, t_size), 1)
-                    past_nums = analyzer.get_numbers_from_draw(inc_draw)
-                    if past_nums: st.caption(f"أرقام السحب {inc_draw}: {past_nums}")
+                        inc_draw = c1.number_input("رقم السحب", 1, analyzer.total_draws, analyzer.total_draws)
+                        inc_cnt = c2.number_input("عدد الأرقام", 1, min(6, t_size), 1)
+                        past_nums = analyzer.get_numbers_from_draw(inc_draw)
+                        if past_nums: st.caption(f"أرقام السحب {inc_draw}: {past_nums}")
 
                 st.markdown("---")
                 anti = st.slider("تجنب تكرار سحوبات (X)", 3, t_size, 5)
 
-            criteria = {
-                'size': t_size, 'sequences_count': seq, 'odd_count': odd, 
-                'shadows_count': sha, 'anti_match_limit': anti, 'sum_near_avg': avg_chk,
-                'target_average': target_avg_val,
-                'include_from_draw': inc_draw if use_past else None, 'include_count': inc_cnt if use_past else 0,
-                'strategy': strategy_map[strategy]
-            }
+                criteria = {
+                    'size': t_size, 'sequences_count': seq, 'odd_count': odd, 
+                    'shadows_count': sha, 'anti_match_limit': anti, 'sum_near_avg': avg_chk,
+                    'target_average': target_avg_val,
+                    'include_from_draw': inc_draw if use_past else None, 'include_count': inc_cnt if use_past else 0,
+                    'strategy': strategy_map[strategy]
+                }
 
-            if st.button("🔍 فحص الجدوى"):
-                with st.spinner("جاري المحاكاة..."):
-                    est = generator.estimate_success_probability(criteria)
-                    color = "green" if est['probability'] > 5 else "red"
-                    st.markdown(f"**النسبة:** :{color}[{est['probability']}%] ({est['advice']})")
+                if st.button("🔍 فحص الجدوى"):
+                    with st.spinner("جاري المحاكاة..."):
+                        est = generator.estimate_success_probability(criteria)
+                        color = "green" if est['probability'] > 5 else "red"
+                        st.markdown(f"**النسبة:** :{color}[{est['probability']}%] ({est['advice']})")
 
-            if st.button("🚀 توليد الآن", type="primary", use_container_width=True):
-                with st.spinner("جاري التوليد..."):
-                    res = generator.generate_batch(criteria, t_count)
-                    st.session_state['last_result'] = res
+                if st.button("🚀 توليد الآن", type="primary", use_container_width=True):
+                    with st.spinner("جاري بدء المحرك..."):
+                        st.session_state.last_result = generator.generate_batch(criteria, t_count)
 
-        with col2:
-            if 'last_result' in st.session_state:
-                res = st.session_state['last_result']
-                if res['status'] == 'validation_error':
-                    st.error("خطأ:"); [st.write(f"- {e}") for e in res['errors']]
-                elif res['status'] == 'failed':
-                    st.error("فشل التوليد."); st.write("الأسباب:", res['errors'])
+            with col2:
+                if st.session_state.last_result:
+                    res = st.session_state.last_result
+                    if res['status'] == 'validation_error':
+                        st.error("خطأ:"); [st.write(f"- {e}") for e in res['errors']]
+                    elif res['status'] == 'failed':
+                        st.error("فشل التوليد."); st.write("الأسباب:", res['errors'])
+                    else:
+                        if res['status'] == 'partial_success': st.warning(f"تم توليد {res['generated']} تذاكر فقط.")
+                        else: st.success(f"تم توليد {res['generated']} تذاكر بنجاح!")
+                        
+                        for t in res['tickets']:
+                            with st.expander(f"🎫 تذكرة #{t['id']} - {t['analysis']['profile']}", expanded=True):
+                                st.markdown("".join([f"<span style='display:inline-block; background:#dcfce7; color:#166534; padding:5px 10px; margin:2px; border-radius:50%; font-weight:bold; border:1px solid #166534'>{n}</span>" for n in t['numbers']]), unsafe_allow_html=True)
+                                ca, cb, cc = st.columns(3)
+                                ca.caption(f"المجموع: {t['analysis']['sum']}")
+                                cb.caption(f"المتتاليات: {t['analysis']['sequences']}")
+                                cc.caption(f"الظلال: {t['analysis']['shadows']}")
+                                if use_past and inc_draw:
+                                    draw_nums = set(analyzer.get_numbers_from_draw(inc_draw))
+                                    matches = set(t['numbers']) & draw_nums
+                                    color = "green" if len(matches)==inc_cnt else "red"
+                                    st.markdown(f":{color}[✅ المطلوب: {inc_cnt} | 🎯 المحقق: {len(matches)} ({list(matches)})]")
+
+    with tab2:
+        st.subheader("🕵️ فحص تذكرة تاريخياً")
+        if analyzer:
+            c_check1, c_check2 = st.columns([1, 2])
+            with c_check1:
+                chk_size = st.radio("حدد حجم التذكرة للفحص:", [6, 7, 8, 9, 10], horizontal=True)
+            
+            with c_check2:
+                chk_numbers = st.multiselect(
+                    f"اختر {chk_size} أرقام بدقة:",
+                    options=list(range(1, 33)),
+                    max_selections=chk_size,
+                    help="اختر الأرقام التي تريد فحصها تاريخياً"
+                )
+            
+            if st.button("🔎 ابدأ الفحص الشامل", type="primary", use_container_width=True):
+                if len(chk_numbers) != chk_size:
+                    st.error(f"⚠️ يجب اختيار {chk_size} أرقام بالضبط. أنت اخترت {len(chk_numbers)}.")
                 else:
-                    if res['status'] == 'partial_success': st.warning(f"تم توليد {res['generated']} تذاكر فقط.")
-                    else: st.success(f"تم توليد {res['generated']} تذاكر بنجاح!")
+                    sorted_chk = sorted(chk_numbers)
+                    st.success(f"جاري فحص التذكرة: {sorted_chk}")
                     
-                    for t in res['tickets']:
-                        with st.expander(f"🎫 تذكرة #{t['id']} - {t['analysis']['profile']}", expanded=True):
-                            st.markdown("".join([f"<span style='display:inline-block; background:#dcfce7; color:#166534; padding:5px 10px; margin:2px; border-radius:50%; font-weight:bold; border:1px solid #166534'>{n}</span>" for n in t['numbers']]), unsafe_allow_html=True)
-                            ca, cb, cc = st.columns(3)
-                            ca.caption(f"المجموع: {t['analysis']['sum']}")
-                            cb.caption(f"المتتاليات: {t['analysis']['sequences']}")
-                            cc.caption(f"الظلال: {t['analysis']['shadows']}")
-                            if use_past and inc_draw:
-                                draw_nums = set(analyzer.get_numbers_from_draw(inc_draw))
-                                matches = set(t['numbers']) & draw_nums
-                                color = "green" if len(matches)==inc_cnt else "red"
-                                st.markdown(f":{color}[✅ المطلوب: {inc_cnt} | 🎯 المحقق: {len(matches)} ({list(matches)})]")
+                    matches = analyzer.check_matches_history(sorted_chk)
+                    st.markdown("### 1️⃣ سجل التطابقات (Matches)")
+                    found_any = False
+                    for count in [6, 5, 4]:
+                        res_list = matches[count]
+                        if res_list:
+                            found_any = True
+                            with st.expander(f"🌟 تطابق {count} أرقام (عدد المرات: {len(res_list)})", expanded=True):
+                                for item in res_list:
+                                    st.markdown(f"- **سحب رقم {item['draw_id']}:** الأرقام المتطابقة {item['matched_nums']}")
+                    if not found_any: st.info("✅ هذه التذكرة نظيفة! (لم تحقق 4,5,6 سابقاً)")
+
+                    st.divider()
+
+                    st.markdown("### 2️⃣ تحليل تكرار الأرقام")
+                    freq_df = analyzer.get_numbers_frequency_stats(sorted_chk)
+                    col_f1, col_f2 = st.columns([1, 2])
+                    with col_f1: st.dataframe(freq_df, hide_index=True, use_container_width=True)
+                    with col_f2: st.bar_chart(freq_df.set_index('الرقم')['عدد مرات الظهور'], color="#166534")
+
+                    st.divider()
+
+                    st.markdown("### 3️⃣ فحص المتتاليات")
+                    seq_results = analyzer.analyze_sequences_history(sorted_chk)
+                    if not seq_results: st.write("🔹 لا توجد متتاليات.")
+                    else:
+                        for seq_tuple, data in seq_results.items():
+                            st.markdown(f"#### 🔗 المتتالية: `{seq_tuple}`")
+                            st.write(f"- **ظهرت كاملة:** {data['full_count']} مرة.")
+                            if data['full_draws']:
+                                st.caption(f"📍 في السحوبات: {data['full_draws']}")
+                            
+                            if data['sub']:
+                                st.write("- **الأجزاء الثنائية:**")
+                                for sub_pair, sub_data in data['sub'].items():
+                                    st.write(f"  - الثنائية `{sub_pair}` ظهرت: **{sub_data['count']}** مرة.")
+                                    if sub_data['draws']:
+                                        with st.expander(f"عرض سحوبات {sub_pair}"):
+                                            st.write(f"{sub_data['draws']}")
+                            st.markdown("---")
 
     st.markdown("""<div class="footer">برمجة وتطوير: <b>محمد العمري</b></div>""", unsafe_allow_html=True)
 
