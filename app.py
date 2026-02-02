@@ -563,12 +563,11 @@ def main():
             .fancy-title {
                 text-align: center;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 25px 30px;
+                padding: 25px 20px;
                 border-radius: 15px;
                 box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
                 margin-bottom: 30px;
                 border: 3px solid #ffffff;
-                overflow: hidden;
             }
             
             .fancy-title h1 {
@@ -580,14 +579,13 @@ def main():
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
                 letter-spacing: 1px;
                 font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                line-height: 1.3;
+                word-wrap: break-word;
             }
             
             .fancy-title .emoji {
                 font-size: 1em;
-                margin: 0 12px;
+                margin: 0 10px;
                 display: inline;
                 vertical-align: middle;
                 animation: pulse 2s infinite;
@@ -600,23 +598,23 @@ def main():
             
             @media (max-width: 768px) {
                 .fancy-title {
-                    padding: 20px 15px;
+                    padding: 20px 10px;
                 }
                 .fancy-title h1 {
-                    font-size: 1.5em;
+                    font-size: 1.4em;
                 }
                 .fancy-title .emoji {
                     font-size: 0.9em;
-                    margin: 0 8px;
+                    margin: 0 6px;
                 }
             }
             
             @media (max-width: 480px) {
                 .fancy-title h1 {
-                    font-size: 1.2em;
+                    font-size: 1.1em;
                 }
                 .fancy-title .emoji {
-                    margin: 0 5px;
+                    margin: 0 4px;
                 }
             }
         </style>
