@@ -559,7 +559,11 @@ def main():
             .main > div { padding-top: 2rem; }
             .stButton>button { width: 100%; }
             .footer { text-align: center; margin-top: 50px; color: gray; font-size: 0.9em; }
-            
+        </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+        <style>
             .fancy-title {
                 text-align: center;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -569,7 +573,6 @@ def main():
                 margin-bottom: 30px;
                 border: 3px solid #ffffff;
             }
-            
             .fancy-title h1 {
                 color: #ffffff;
                 font-size: 2.2em;
@@ -582,7 +585,6 @@ def main():
                 line-height: 1.3;
                 word-wrap: break-word;
             }
-            
             .fancy-title .emoji {
                 font-size: 1em;
                 margin: 0 10px;
@@ -590,40 +592,24 @@ def main():
                 vertical-align: middle;
                 animation: pulse 2s infinite;
             }
-            
             @keyframes pulse {
                 0%, 100% { transform: scale(1); }
                 50% { transform: scale(1.1); }
             }
-            
             @media (max-width: 768px) {
-                .fancy-title {
-                    padding: 20px 10px;
-                }
-                .fancy-title h1 {
-                    font-size: 1.4em;
-                }
-                .fancy-title .emoji {
-                    font-size: 0.9em;
-                    margin: 0 6px;
-                }
+                .fancy-title { padding: 20px 10px; }
+                .fancy-title h1 { font-size: 1.4em; }
+                .fancy-title .emoji { font-size: 0.9em; margin: 0 6px; }
             }
-            
             @media (max-width: 480px) {
-                .fancy-title h1 {
-                    font-size: 1.1em;
-                }
-                .fancy-title .emoji {
-                    margin: 0 4px;
-                }
+                .fancy-title h1 { font-size: 1.1em; }
+                .fancy-title .emoji { margin: 0 4px; }
             }
         </style>
-        
         <div class="fancy-title">
             <h1><span class="emoji">🎯</span>القناص لفحص وتوليد تذاكر لوتري الأردن<span class="emoji">🎰</span></h1>
         </div>
     """, unsafe_allow_html=True)
-    
     initialize_session_state()
     
     # تحميل البيانات تلقائياً عند أول تشغيل
