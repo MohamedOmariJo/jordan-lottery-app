@@ -563,35 +563,33 @@ def main():
             .fancy-title {
                 text-align: center;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 30px 20px;
+                padding: 25px 30px;
                 border-radius: 15px;
                 box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
                 margin-bottom: 30px;
                 border: 3px solid #ffffff;
-                display: flex;
-                align-items: center;
-                justify-content: center;
+                overflow: hidden;
             }
             
             .fancy-title h1 {
                 color: #ffffff;
-                font-size: 2.3em;
+                font-size: 2.2em;
                 font-weight: 800;
                 margin: 0;
+                padding: 0;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
                 letter-spacing: 1px;
                 font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-wrap: nowrap;
-                line-height: 1.2;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
             
             .fancy-title .emoji {
                 font-size: 1em;
-                margin: 0 15px;
-                display: inline-block;
+                margin: 0 12px;
+                display: inline;
+                vertical-align: middle;
                 animation: pulse 2s infinite;
             }
             
@@ -601,11 +599,24 @@ def main():
             }
             
             @media (max-width: 768px) {
+                .fancy-title {
+                    padding: 20px 15px;
+                }
                 .fancy-title h1 {
-                    font-size: 1.8em;
+                    font-size: 1.5em;
                 }
                 .fancy-title .emoji {
-                    margin: 0 10px;
+                    font-size: 0.9em;
+                    margin: 0 8px;
+                }
+            }
+            
+            @media (max-width: 480px) {
+                .fancy-title h1 {
+                    font-size: 1.2em;
+                }
+                .fancy-title .emoji {
+                    margin: 0 5px;
                 }
             }
         </style>
