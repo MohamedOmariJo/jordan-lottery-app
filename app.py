@@ -562,54 +562,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
     
-    st.markdown("""
-        <style>
-            .fancy-title {
-                text-align: center;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 25px 20px;
-                border-radius: 15px;
-                box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
-                margin-bottom: 30px;
-                border: 3px solid #ffffff;
-            }
-            .fancy-title h1 {
-                color: #ffffff;
-                font-size: 2.2em;
-                font-weight: 800;
-                margin: 0;
-                padding: 0;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-                letter-spacing: 1px;
-                font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-                line-height: 1.3;
-                word-wrap: break-word;
-            }
-            .fancy-title .emoji {
-                font-size: 1em;
-                margin: 0 10px;
-                display: inline;
-                vertical-align: middle;
-                animation: pulse 2s infinite;
-            }
-            @keyframes pulse {
-                0%, 100% { transform: scale(1); }
-                50% { transform: scale(1.1); }
-            }
-            @media (max-width: 768px) {
-                .fancy-title { padding: 20px 10px; }
-                .fancy-title h1 { font-size: 1.4em; }
-                .fancy-title .emoji { font-size: 0.9em; margin: 0 6px; }
-            }
-            @media (max-width: 480px) {
-                .fancy-title h1 { font-size: 1.1em; }
-                .fancy-title .emoji { margin: 0 4px; }
-            }
-        </style>
-        <div class="fancy-title">
-            <h1><span class="emoji">🎯</span>القناص لفحص وتوليد تذاكر لوتري الأردن<span class="emoji">🎰</span></h1>
-        </div>
-    """, unsafe_allow_html=True)
+    st.title("🎰 نظام توليد وفحص تذاكر اليانصيب الأردني")
     initialize_session_state()
     
     # تحميل البيانات تلقائياً عند أول تشغيل
@@ -705,8 +658,8 @@ def main():
         with col1:
             with st.container(border=True):
                 st.markdown("**📐 الاستراتيجية والمتوسط**")
-                strategy = st.selectbox("اختر الاستراتيجية:", ["⚖️ كرات مختلطة القوة", "🔥 كرات ساخنة (الأكثر ظهوراً)", "❄️ كرات باردة (الأقل ظهوراً)"])
-                strategy_map = {"⚖️ كرات مختلطة القوة": "balanced", "🔥 كرات ساخنة (الأكثر ظهوراً)": "hot", "❄️ كرات باردة (الأقل ظهوراً)": "cold"}
+                strategy = st.selectbox("اختر الاستراتيجية:", ["⚖️ متوازنة", "🔥 ساخنة", "❄️ باردة"])
+                strategy_map = {"⚖️ متوازنة": "balanced", "🔥 ساخنة": "hot", "❄️ باردة": "cold"}
                 
                 avg_mode = st.radio("حساب المتوسط:", ["Global", "Last N Draws", "Specific Range"], horizontal=True)
                 
@@ -739,11 +692,11 @@ def main():
 
             with st.container(border=True):
                 st.markdown("**🎯 معايير التذكرة**")
-                t_count = st.number_input("عدد التذاكر المراد توليدها", 1, 10, 3)
+                t_count = st.number_input("عدد التذاكر", 1, 10, 3)
                 t_size = st.slider("حجم التذكرة", 6, 10, 6)
-                odd = st.number_input("عدد الكرات التي تحمل أرقام فردية في كل تذكرة مراد توليدها", 0, t_size, t_size//2)
-                seq = st.number_input("عدد المتتاليات في كل تذكرة مراد توليدها", 0, t_size-1, 0)
-                sha = st.number_input("عدد الظلال في كل تذكرة مراد توليدها", 0, 3, 1)
+                odd = st.number_input("عدد الفردي", 0, t_size, t_size//2)
+                seq = st.number_input("عدد المتتاليات", 0, t_size-1, 0)
+                sha = st.number_input("عدد الظلال", 0, 3, 1)
 
             with st.container(border=True):
                 st.markdown("**🔄 تكرار صارم (Pivot)**")
@@ -760,7 +713,7 @@ def main():
                         st.caption(f"أرقام السحب {inc_draw}: {past_nums}")
 
             st.markdown("---")
-            anti = st.slider("تجنب تطابق (عدد أرقام) مع أي سحب سابق", 3, t_size, 5)
+            anti = st.slider("تجنب تكرار سحوبات (X)", 3, t_size, 5)
 
             criteria = {
                 'size': t_size, 
