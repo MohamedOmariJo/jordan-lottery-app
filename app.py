@@ -7,6 +7,8 @@ from itertools import chain
 import logging
 import time
 import os
+import requests
+from io import BytesIO
 
 # ==============================================================================
 # 1. إعدادات النظام
@@ -24,6 +26,8 @@ class LotteryConfig:
     STRICT_SHADOW_ATTEMPTS = 15000
     DEFAULT_SUM_TOLERANCE = 0.15
     MAX_BATCH_SIZE = 10
+    # رابط ملف البيانات على GitHub - عدّل هذا الرابط حسب مستودعك
+    GITHUB_DATA_URL = "https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/history.xlsx"
 
 def initialize_session_state():
     """تهيئة متغيرات الجلسة"""
@@ -31,10 +35,70 @@ def initialize_session_state():
     if 'analyzer' not in st.session_state: st.session_state.analyzer = None
     if 'generator' not in st.session_state: st.session_state.generator = None
     if 'last_result' not in st.session_state: st.session_state.last_result = None
+    if 'auto_loaded' not in st.session_state: st.session_state.auto_loaded = False
 
 # ==============================================================================
 # 2. طبقة البيانات (تحميل حقيقي فقط)
 # ==============================================================================
+@st.cache_data(show_spinner=False)
+def load_from_github(url: str = None) -> Tuple[Optional[pd.DataFrame], str]:
+    """تحميل البيانات من GitHub"""
+    try:
+        if url is None:
+            url = LotteryConfig.GITHUB_DATA_URL
+        
+        # تحميل الملف من GitHub
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        # قراءة الملف من الذاكرة
+        file_content = BytesIO(response.content)
+        df = pd.read_excel(file_content)
+        
+        # تنظيف أولي
+        df.dropna(how='all', inplace=True)
+        
+        # التحقق من الأعمدة
+        cols = ['N1','N2','N3','N4','N5','N6']
+        if not set(cols).issubset(df.columns):
+             return None, "خطأ: الملف لا يحتوي على أعمدة الأرقام (N1...N6)"
+
+        # تحويل الأرقام
+        for c in cols:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+        
+        df.dropna(subset=cols, inplace=True)
+        df['numbers'] = df[cols].values.tolist()
+        
+        # فلتر النطاق (1-32)
+        def is_valid_draw(nums):
+            return all(LotteryConfig.MIN_NUM <= int(n) <= LotteryConfig.MAX_NUM for n in nums)
+
+        df = df[df['numbers'].apply(is_valid_draw)]
+        
+        if df.empty:
+            return None, "خطأ: لا توجد بيانات صالحة (تأكد أن الأرقام بين 1 و 32)."
+
+        # ترتيب الأرقام للتسهيل
+        df['numbers'] = df['numbers'].apply(lambda x: sorted([int(n) for n in x]))
+        
+        # توحيد عمود المعرف
+        if 'رقم السحب' in df.columns:
+            df = df.rename(columns={'رقم السحب': 'draw_id'})
+        elif 'DrawID' in df.columns:
+            df = df.rename(columns={'DrawID': 'draw_id'})
+        elif 'draw_id' not in df.columns:
+            df['draw_id'] = range(1, len(df) + 1)
+            
+        return df, f"✅ تم تحميل {len(df)} سحب من GitHub"
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"GitHub loading error: {e}")
+        return None, f"خطأ في الاتصال بـ GitHub: {str(e)}"
+    except Exception as e:
+        logger.error(f"Data processing error: {e}")
+        return None, f"خطأ في معالجة الملف: {str(e)}"
+
 @st.cache_data(show_spinner=False)
 def load_and_process_data(file_input: Union[str, st.runtime.uploaded_file_manager.UploadedFile]) -> Tuple[Optional[pd.DataFrame], str]:
     try:
@@ -414,11 +478,39 @@ def main():
 
     st.title("🎰 نظام لوتري الأردن الذكي (v9.0 Strict)")
     
+    # التحميل التلقائي من GitHub عند أول دخول
+    if not st.session_state.auto_loaded and st.session_state.history_df is None:
+        with st.spinner("🔄 جاري تحميل البيانات من GitHub..."):
+            df, msg = load_from_github()
+            if df is not None:
+                st.session_state.history_df = df
+                st.session_state.analyzer = LotteryAnalyzer(df)
+                st.session_state.generator = TicketGenerator(st.session_state.analyzer)
+            st.session_state.auto_loaded = True
+    
     # --- Sidebar ---
     with st.sidebar:
         st.header("1. إعدادات البيانات")
-        # لا يوجد خيار بيانات وهمية، فقط رفع ملف
-        uploaded_file = st.file_uploader("📂 الرجاء رفع ملف البيانات (Excel/CSV)", type=['xlsx', 'csv'])
+        
+        # إذا تم تحميل البيانات تلقائياً، أظهر معلومات
+        if st.session_state.history_df is not None and st.session_state.auto_loaded:
+            st.success("✅ البيانات محملة من GitHub")
+            if st.button("🔄 إعادة تحميل من GitHub"):
+                with st.spinner("جاري إعادة التحميل..."):
+                    df, msg = load_from_github()
+                    if df is not None:
+                        st.session_state.history_df = df
+                        st.session_state.analyzer = LotteryAnalyzer(df)
+                        st.session_state.generator = TicketGenerator(st.session_state.analyzer)
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+        
+        # خيار تحميل ملف بديل
+        st.markdown("---")
+        st.caption("أو ارفع ملف بديل:")
+        uploaded_file = st.file_uploader("📂 رفع ملف Excel/CSV", type=['xlsx', 'csv'])
         
         df = None
         msg = ""
@@ -426,7 +518,7 @@ def main():
         if uploaded_file:
             df, msg = load_and_process_data(uploaded_file)
             if df is not None:
-                st.success("✅ تم تحميل الملف بنجاح")
+                st.success("✅ تم تحميل الملف المرفوع")
             else:
                 st.error(msg)
         elif st.session_state.history_df is None:
@@ -447,11 +539,25 @@ def main():
             analyzer = st.session_state.analyzer
             st.metric("إجمالي السحوبات", analyzer.total_draws)
             st.metric("المتوسط العام", f"{analyzer.global_avg_sum:.2f}")
+        elif st.session_state.history_df is not None:
+            analyzer = st.session_state.analyzer
+            st.metric("إجمالي السحوبات", analyzer.total_draws)
+            st.metric("المتوسط العام", f"{analyzer.global_avg_sum:.2f}")
+        
+        # معلومات عن التحديث
+        st.markdown("---")
+        st.info("""
+        📅 **جدول السحوبات:**
+        - الأحد من كل أسبوع
+        - الأربعاء من كل أسبوع
+        
+        💡 اضغط "🔄 إعادة تحميل" بعد كل سحب جديد
+        """)
 
     # --- MAIN CONTENT CONTROL ---
     # إذا لم توجد بيانات حقيقية، نوقف التطبيق هنا
     if st.session_state.history_df is None:
-        st.markdown('<div class="file-warning">⛔ التطبيق متوقف.<br>الرجاء تحميل ملف بيانات السحوبات (Excel) من القائمة الجانبية للبدء.<br>لن يعمل النظام على بيانات وهمية بعد الآن.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="file-warning">⛔ فشل تحميل البيانات من GitHub.<br>الرجاء تحميل ملف بيانات السحوبات (Excel) من القائمة الجانبية للبدء.</div>', unsafe_allow_html=True)
         st.stop() # إيقاف التنفيذ
 
     # إذا وصلنا هنا، فالبيانات حقيقية 100%
