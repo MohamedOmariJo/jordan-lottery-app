@@ -643,7 +643,7 @@ def main():
         </style>
         
         <div class="logo-container">
-            <img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.jpg" alt="Jordan Lotto Logo">
+            <img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.png" alt="Jordan Lotto Logo">
         </div>
         
         <div class="fancy-title">
@@ -758,7 +758,7 @@ def main():
         """, unsafe_allow_html=True)
         st.markdown(
             '<h3 class="header-with-logo">'
-            '<img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.jpg" alt="Logo">'
+            '<img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.png" alt="Logo">'
             ' توليد تذاكر ذكية</h3>',
             unsafe_allow_html=True
         )
