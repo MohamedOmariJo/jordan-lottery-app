@@ -563,33 +563,50 @@ def main():
             .fancy-title {
                 text-align: center;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 25px;
+                padding: 30px 20px;
                 border-radius: 15px;
                 box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
                 margin-bottom: 30px;
                 border: 3px solid #ffffff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
             
             .fancy-title h1 {
                 color: #ffffff;
-                font-size: 2.5em;
+                font-size: 2.3em;
                 font-weight: 800;
                 margin: 0;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
                 letter-spacing: 1px;
                 font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-                white-space: nowrap;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-wrap: nowrap;
+                line-height: 1.2;
             }
             
             .fancy-title .emoji {
-                font-size: 1.2em;
-                margin: 0 10px;
+                font-size: 1em;
+                margin: 0 15px;
+                display: inline-block;
                 animation: pulse 2s infinite;
             }
             
             @keyframes pulse {
                 0%, 100% { transform: scale(1); }
                 50% { transform: scale(1.1); }
+            }
+            
+            @media (max-width: 768px) {
+                .fancy-title h1 {
+                    font-size: 1.8em;
+                }
+                .fancy-title .emoji {
+                    margin: 0 10px;
+                }
             }
         </style>
         
