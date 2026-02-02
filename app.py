@@ -476,7 +476,7 @@ def main():
     """
     st.markdown(custom_css, unsafe_allow_html=True)
 
-    st.title("🎰 نظام لوتري الأردن الذكي (v9.0 Strict)")
+    st.title("🎯 القناص لتوليد وفحص تذاكر لوتري الأردن")
     
     # التحميل التلقائي من GitHub عند أول دخول
     if not st.session_state.auto_loaded and st.session_state.history_df is None:
@@ -600,11 +600,11 @@ def main():
                     if chart_data: st.line_chart(chart_data, height=150)
 
             with st.container(border=True):
-                t_count = st.number_input("عدد التذاكر", 1, 10, 3)
-                t_size = st.slider("حجم التذكرة", 6, 10, 6)
+                t_count = st.number_input("عدد التذاكر المراد توليدها", 1, 10, 3)
+                t_size = st.slider("حجم التذكرة المراد توليدها", 6, 10, 6)
                 odd = st.number_input("عدد الفردي", 0, t_size, t_size//2)
-                seq = st.number_input("عدد المتتاليات", 0, t_size-1, 0)
-                sha = st.number_input("عدد الظلال", 0, 3, 1)
+                seq = st.number_input("عدد المتتاليات في كل تذكرة مراد توليدها", 0, t_size-1, 0)
+                sha = st.number_input("عدد الظلال في كل تذكرة مراد توليدها", 0, 3, 1)
 
             with st.container(border=True):
                 st.markdown("**🔄 تكرار صارم (Pivot)**")
@@ -618,7 +618,7 @@ def main():
                     if past_nums: st.caption(f"أرقام السحب {inc_draw}: {past_nums}")
 
             st.markdown("---")
-            anti = st.slider("تجنب تكرار سحوبات (X)", 3, t_size, 5)
+            anti = st.slider("تجنب تطابق (عدد أرقام) مع أي نتيجة سحب سابق", 3, t_size, 5)
 
             criteria = {
                 'size': t_size, 'sequences_count': seq, 'odd_count': odd, 
