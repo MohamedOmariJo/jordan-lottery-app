@@ -554,11 +554,6 @@ class TicketGenerator:
 def main():
     st.set_page_config(page_title="توقعات اليانصيب الأردني", page_icon="🎰", layout="wide")
     
-    # عرض الشعار
-    col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
-    with col_logo2:
-        st.image("https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.png", width=120)
-    
     st.markdown("""
         <style>
             .main > div { padding-top: 2rem; }
@@ -571,7 +566,6 @@ def main():
                 padding: 25px 20px;
                 border-radius: 15px;
                 box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
-                margin-top: 20px;
                 margin-bottom: 30px;
                 border: 3px solid #ffffff;
             }
@@ -630,7 +624,6 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    # st.title("🎰 نظام محمد العمري لفحص وتوليد تذاكر لوتري الأردن")
     initialize_session_state()
     
     # تحميل البيانات تلقائياً عند أول تشغيل
@@ -720,27 +713,7 @@ def main():
     # Tab 1: Generator
     # --------------------------------------------------------
     with tab1:
-        st.markdown("""
-            <style>
-                .header-with-logo {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 10px;
-                }
-                .header-with-logo img {
-                    width: 35px;
-                    height: 35px;
-                    border-radius: 50%;
-                    vertical-align: middle;
-                }
-            </style>
-        """, unsafe_allow_html=True)
-        st.markdown(
-            '<h3 class="header-with-logo">'
-            '<img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.png" alt="Logo">'
-            ' توليد تذاكر ذكية</h3>',
-            unsafe_allow_html=True
-        )
+        st.subheader("🎲 توليد تذاكر ذكية")
         col1, col2 = st.columns([1, 1])
         
         with col1:
