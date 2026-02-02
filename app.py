@@ -554,26 +554,16 @@ class TicketGenerator:
 def main():
     st.set_page_config(page_title="توقعات اليانصيب الأردني", page_icon="🎰", layout="wide")
     
+    # عرض الشعار
+    col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
+    with col_logo2:
+        st.image("https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.png", width=120)
+    
     st.markdown("""
         <style>
             .main > div { padding-top: 2rem; }
             .stButton>button { width: 100%; }
             .footer { text-align: center; margin-top: 50px; color: gray; font-size: 0.9em; }
-            
-            .logo-container {
-                text-align: center;
-                margin-bottom: 20px;
-            }
-            
-            .logo-container img {
-                width: 120px;
-                height: 120px;
-                border-radius: 50%;
-                box-shadow: 0 4px 20px rgba(255, 0, 0, 0.3);
-                border: 4px solid #ffffff;
-                background: white;
-                padding: 5px;
-            }
             
             .fancy-title {
                 text-align: center;
@@ -581,6 +571,7 @@ def main():
                 padding: 25px 20px;
                 border-radius: 15px;
                 box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
+                margin-top: 20px;
                 margin-bottom: 30px;
                 border: 3px solid #ffffff;
             }
@@ -612,10 +603,6 @@ def main():
             }
             
             @media (max-width: 768px) {
-                .logo-container img {
-                    width: 90px;
-                    height: 90px;
-                }
                 .fancy-title {
                     padding: 20px 10px;
                 }
@@ -629,10 +616,6 @@ def main():
             }
             
             @media (max-width: 480px) {
-                .logo-container img {
-                    width: 70px;
-                    height: 70px;
-                }
                 .fancy-title h1 {
                     font-size: 1.1em;
                 }
@@ -641,10 +624,6 @@ def main():
                 }
             }
         </style>
-        
-        <div class="logo-container">
-            <img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.png" alt="Jordan Lotto Logo">
-        </div>
         
         <div class="fancy-title">
             <h1><span class="emoji">🎯</span>القناص لفحص وتوليد تذاكر لوتري الأردن<span class="emoji">🎰</span></h1>
