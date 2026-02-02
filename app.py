@@ -560,6 +560,22 @@ def main():
             .stButton>button { width: 100%; }
             .footer { text-align: center; margin-top: 50px; color: gray; font-size: 0.9em; }
             
+            .logo-container {
+                text-align: center;
+                margin-bottom: 20px;
+                animation: fadeIn 1s ease-in;
+            }
+            
+            .logo-container img {
+                width: 120px;
+                height: 120px;
+                border-radius: 50%;
+                box-shadow: 0 4px 20px rgba(255, 0, 0, 0.3);
+                border: 4px solid #ffffff;
+                background: white;
+                padding: 5px;
+            }
+            
             .fancy-title {
                 text-align: center;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -596,7 +612,16 @@ def main():
                 50% { transform: scale(1.1); }
             }
             
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(-20px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            
             @media (max-width: 768px) {
+                .logo-container img {
+                    width: 90px;
+                    height: 90px;
+                }
                 .fancy-title {
                     padding: 20px 10px;
                 }
@@ -610,6 +635,10 @@ def main():
             }
             
             @media (max-width: 480px) {
+                .logo-container img {
+                    width: 70px;
+                    height: 70px;
+                }
                 .fancy-title h1 {
                     font-size: 1.1em;
                 }
@@ -618,6 +647,10 @@ def main():
                 }
             }
         </style>
+        
+        <div class="logo-container">
+            <img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.jpg" alt="Jordan Lotto Logo">
+        </div>
         
         <div class="fancy-title">
             <h1><span class="emoji">🎯</span>القناص لفحص وتوليد تذاكر لوتري الأردن<span class="emoji">🎰</span></h1>
@@ -714,7 +747,32 @@ def main():
     # Tab 1: Generator
     # --------------------------------------------------------
     with tab1:
-        st.subheader("🎲 توليد تذاكر ذكية")
+        st.markdown("""
+            <style>
+                .smart-tickets-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 15px;
+                    margin-bottom: 20px;
+                }
+                .smart-tickets-header img {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    box-shadow: 0 2px 8px rgba(255, 0, 0, 0.3);
+                }
+                .smart-tickets-header h3 {
+                    margin: 0;
+                    font-size: 1.5em;
+                    color: #1f2937;
+                }
+            </style>
+            <div class="smart-tickets-header">
+                <img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.jpg" alt="Lotto">
+                <h3>توليد تذاكر ذكية</h3>
+            </div>
+        """, unsafe_allow_html=True)
         col1, col2 = st.columns([1, 1])
         
         with col1:
