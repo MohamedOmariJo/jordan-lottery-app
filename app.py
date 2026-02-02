@@ -563,7 +563,6 @@ def main():
             .logo-container {
                 text-align: center;
                 margin-bottom: 20px;
-                animation: fadeIn 1s ease-in;
             }
             
             .logo-container img {
@@ -610,11 +609,6 @@ def main():
             @keyframes pulse {
                 0%, 100% { transform: scale(1); }
                 50% { transform: scale(1.1); }
-            }
-            
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(-20px); }
-                to { opacity: 1; transform: translateY(0); }
             }
             
             @media (max-width: 768px) {
@@ -749,30 +743,25 @@ def main():
     with tab1:
         st.markdown("""
             <style>
-                .smart-tickets-header {
-                    display: flex;
+                .header-with-logo {
+                    display: inline-flex;
                     align-items: center;
-                    justify-content: center;
-                    gap: 15px;
-                    margin-bottom: 20px;
+                    gap: 10px;
                 }
-                .smart-tickets-header img {
-                    width: 40px;
-                    height: 40px;
+                .header-with-logo img {
+                    width: 35px;
+                    height: 35px;
                     border-radius: 50%;
-                    box-shadow: 0 2px 8px rgba(255, 0, 0, 0.3);
-                }
-                .smart-tickets-header h3 {
-                    margin: 0;
-                    font-size: 1.5em;
-                    color: #1f2937;
+                    vertical-align: middle;
                 }
             </style>
-            <div class="smart-tickets-header">
-                <img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.jpg" alt="Lotto">
-                <h3>توليد تذاكر ذكية</h3>
-            </div>
         """, unsafe_allow_html=True)
+        st.markdown(
+            '<h3 class="header-with-logo">'
+            '<img src="https://raw.githubusercontent.com/MohamedOmariJo/jordan-lottery-app/main/lotto_logo.jpg" alt="Logo">'
+            ' توليد تذاكر ذكية</h3>',
+            unsafe_allow_html=True
+        )
         col1, col2 = st.columns([1, 1])
         
         with col1:
